@@ -46,8 +46,7 @@ jobs:
       run: |
         $id = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | % {[char]$_})
         $password = -join ((33..126) | Get-Random -Count 16 | % {[char]$_})
-        Set-Content -Path .\rustdesk-server\conf\key.txt -Value $id
-        Set-Content -Path .\rustdesk-server\conf\password.txt -Value $password
+        Add-Content -Path .\litemanager\config.ini -Value "username=$id`npassword=$password"
         
     - name: Run RustDesk Server
       shell: pwsh
