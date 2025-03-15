@@ -13,8 +13,30 @@ jobs:
     - name: Install RustDesk Server
       shell: pwsh
       run: |
-        Invoke-WebRequest -Uri 'https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-windows.zip' -OutFile rustdesk-server.zip
-        Expand-Archive -Path rustdesk-server.zip -DestinationPath .\rustdesk-server
+        try {
+            Invoke-WebRequest -Uri 'https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-windows.zip' -OutFile rustdesk-server.zip -ErrorAction Stop
+            if (-not (Test-Path rustdesk-server.zip)) {
+                Write-Error 'Downloaded file not found'
+                exit 1
+            }
+            Write-Output 'Download verification:'
+            Get-Item rustdesk-server.zip | Select-Object Name,Length,LastWriteTime
+        } catch {
+            Write-Error "Download failed: $_"
+            exit 1
+        }
+        try {
+            Expand-Archive -Path rustdesk-server.zip -DestinationPath .\rustdesk-server -ErrorAction Stop
+            Write-Output 'Unzip completed. Verifying directory structure...'
+            if (Test-Path .\rustdesk-server) {
+                Get-ChildItem .\rustdesk-server -Recurse | % { Write-Output "Extracted: $($_.FullName)" }
+            } else {
+                Write-Error 'rustdesk-server directory not created after extraction'
+            }
+        } catch {
+            Write-Error "Failed to expand archive: $_"
+            exit 1
+        }
         
 
 
@@ -22,22 +44,50 @@ jobs:
     - name: Configure Static Credentials
       shell: pwsh
       run: |
-        Set-Content -Path .\rustdesk-server\conf\key.txt -Value "${{ inputs.id }}"
-        Set-Content -Path .\rustdesk-server\conf\password.txt -Value "Jafar@786"
+        $id = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 16 | % {[char]$_})
+        $password = -join ((33..126) | Get-Random -Count 16 | % {[char]$_})
+        Set-Content -Path .\rustdesk-server\conf\key.txt -Value $id
+        Set-Content -Path .\rustdesk-server\conf\password.txt -Value $password
         
     - name: Run RustDesk Server
       shell: pwsh
       run: |
-        $process = Start-Process -FilePath .\rustdesk-server\rustdesk.exe -NoNewWindow -PassThru
-        echo "RustDesk process started with PID $($process.Id)"
-        Add-Content -Path $env:GITHUB_OUTPUT -Value "process_id=$($process.Id)"
+        try {
+            $process = Start-Process -FilePath .\rustdesk-server\rustdesk.exe -NoNewWindow -PassThru -RedirectStandardOutput .\rustdesk-server\output.log -RedirectStandardError .\rustdesk-server\error.log
+            Start-Sleep -Seconds 15
+            $retries = 3
+            while ($retries -gt 0) {
+                if ($process.HasExited) { break }
+                Write-Output "Process active - waiting... ($retries retries left)"
+                Start-Sleep -Seconds 5
+                $retries--
+            }
+            if (-not $process.HasExited) {
+                echo "RustDesk process started with PID $($process.Id)"
+                Add-Content -Path $env:GITHUB_OUTPUT -Value "process_id=$($process.Id)"
+                Get-Content -Path .\rustdesk-server\output.log -Tail 50
+                Write-Output "Checking server ports:"
+                $ports = Get-NetTCPConnection -State Listen | Where-Object {$_.LocalPort -in 21115,21116,21117}
+                if (-not $ports) {
+                    Write-Error 'Critical error: Server ports not listening!'
+                    exit 1
+                }
+            } else {
+                Write-Error "Process exited immediately with code $($process.ExitCode)"
+                Get-Content -Path .\rustdesk-server\error.log
+                exit 1
+            }
+        } catch {
+            Write-Error "Failed to start process: $_"
+            exit 1
+        }
         
     - name: Upload Logs
       uses: actions/upload-artifact@v4
       if: always()
       with:
         name: rustdesk-logs
-        path: ${{ github.workspace }}\rustdesk-server\logs\*
+        path: ${{ github.workspace }}\rustdesk-server\*.log
 
     - name: Generate Credentials
       id: gen-creds
