@@ -1,7 +1,11 @@
 # Main orchestration script
 
-# Run dependency installer with elevated privileges
-Start-Process powershell -ArgumentList "-File .\install_dependencies.ps1" -Wait
+# Run dependency installer normally
+.\install_dependencies.ps1
 
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "\nDependency installation failed with exit code $LASTEXITCODE" -ForegroundColor Red
+    exit $LASTEXITCODE
+}
 
 Write-Host "\nSetup completed successfully!" -ForegroundColor Green
