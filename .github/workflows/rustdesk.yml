@@ -1,0 +1,43 @@
+name: Deploy RustDesk Server
+
+on: workflow_dispatch
+
+jobs:
+  deploy:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install RustDesk Server
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri 'https://github.com/rustdesk/rustdesk-server/releases/latest/download/rustdesk-server-windows.zip' -OutFile rustdesk-server.zip
+        Expand-Archive -Path rustdesk-server.zip -DestinationPath .\rustdesk-server
+        
+    - name: Generate Secure Credentials
+      id: gen-creds
+      shell: pwsh
+      run: |
+        $ID = -join ((65..90) + (97..122) | Get-Random -Count 16 | % {[char]$_})
+        $PASSWORD = -join ((33..126) | Get-Random -Count 32 | % {[char]$_})
+        echo "ID=$ID" >> $env:GITHUB_OUTPUT
+        echo "PASSWORD=$PASSWORD" >> $env:GITHUB_OUTPUT
+        
+    - name: Configure Service
+      shell: pwsh
+      run: |
+        New-Service -Name "RustDesk" -BinaryPathName "$pwd\rustdesk-server\rustdesk.exe" -DisplayName "RustDesk Server" -StartupType Automatic
+        Start-Service -Name "RustDesk"
+        
+    - name: Upload Logs
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: rustdesk-logs
+        path: ${{ github.workspace }}\rustdesk-server\logs\*
+
+    outputs:
+      rustdesk-id: ${{ steps.gen-creds.outputs.ID }}
+      rustdesk-password: ${{ steps.gen-creds.outputs.PASSWORD }}
