@@ -1,0 +1,32 @@
+name: Setup RustDesk
+
+on: [push]
+
+jobs:
+  setup-rustdesk:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Install RustDesk
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget
+        wget https://github.com/rustdesk/rustdesk/releases/download/1.1.9/rustdesk-1.1.9-x86_64.deb
+        sudo dpkg -i rustdesk-1.1.9-x86_64.deb
+        sudo apt-get install -f
+
+    - name: Configure RustDesk
+      run: |
+        echo "Configuring RustDesk"
+        # Add your RustDesk configuration commands here
+        # Example: Create a config file with specific settings
+        mkdir -p ~/.config/rustdesk
+        echo "your_rustdesk_configuration" > ~/.config/rustdesk/config.toml
+
+    - name: Verify RustDesk Installation
+      run: |
+        rustdesk --version
+        echo "RustDesk has been installed and configured."
